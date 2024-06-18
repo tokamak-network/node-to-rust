@@ -1,0 +1,2 @@
+[workspace]
+members = ["crates/*", "crates/chapter-1-setup"]
