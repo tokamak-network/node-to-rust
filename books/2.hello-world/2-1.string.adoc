@@ -143,9 +143,7 @@ While ``rustc``'s error messages do hint at how to get you back up and running, 
 
 == Wrap-up
 
-Wrapping your head around strings in Rust is important. I know it's a tease to go through stuff like this without an immediate answer, but we'll get to it ASAP. First though, we need to talk about what "ownership" means in Rust in link:./chapter-5-ownership.adoc[Chapter 5: Borrowing & Ownership].
-
-These questions are why I started this book. Now would be a good time to start searching the web for answers on Rust strings so you have some perspective on things when you come back. If you need a starter, check these out
+If you need a starter, check these out
 
 * https://doc.rust-lang.org/stable/rust-by-example/std/str.html[Strings in the Rust docs]
 * https://www.justanotherdot.com/posts/why-are-there-two-types-of-strings-in-Rust.html[Why Are There Two Types of Strings In Rust?]
