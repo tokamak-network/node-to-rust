@@ -1,195 +1,164 @@
-= The Module System
+= Strings, Part 2
 
 == Introduction
 
-When released, one of node.js's outstanding features was how simple it was to use. Want to run a JavaScript file? Just use `node file.js`. Want to include a local module? Then `require("./module.js")`. If your `require()` wasn't a relative or absolute path, then node looked in the `node_modules` folder. It was a beautiful time. If you've gotten into node.js within the last few years, you probably have a different view of how simple it is or isn't. It *_was_* simple, once upon a time. I swear.
+Now that you're getting confident, you are probably itching to start your own projects. You know how to write some basic Rust. You know how to structure code. You're done with contrived examples with traffic lights. As you play around and start writing your API, you'll inevitably write some function that needs an owned `String`. That's easy. We've done that before. Then it hits you...
 
-Rust's module system is a bit more nuanced. Once you "get it," it won't stand in your way. Until then you might be left wondering "WTF" more than once.
-
-== "How do I import a file in Rust?"
-
-The quick answer is, you don't. You don't import files in Rust. You declare modules. If you declare a module with an empty body, then Rust will look for it on the file system according to its resolution algorithm. That resolution algorithm is highly dependent on the project's module structure.
-
-You declare modules with the `mod` keyword. If you write `mod my_module;` then Rust will look for a module named `my_module` which may be found in a file named `my_module.rs`. But it may not.
-
-There isn't a relative file path relationship like you'd have in node.
-
-== "How do I import functions from other modules?"
-
-The `use` statement brings items from a module into scope of the current module so you can use them without qualifying them. This works with both external dependencies and local modules.
-
-These two are largely the same:
+Your API, dotted with functions like below:
 
 [source,rust]
 ----
-some_module::some_function();
-----
-
-and
-
-[source,rust]
-----
-use some_module::some_function;
-some_function()
-----
-
-Use `{}` to import multiple items, e.g.
-
-[source,rust]
-----
-use std::io::{Read, Write};
-----
-
-Use `super` to import items from a parent module, e.g.
-
-[source,rust]
-----
-fn work() {}
-
-mod test {
-	use super::work;
+fn my_beautiful_function(arg1: String, arg2: String, arg3: String) {
+  /* ... */
 }
 ----
 
-Use `crate` to import items starting from the crate root, e.g.
+forces your users to write code like this
 
 [source,rust]
 ----
-use crate::some_module::some_function
+my_beautiful_function(
+  "first".to_owned(),
+  "second".to_owned(),
+  "third".to_owned()
+);
 ----
 
-== The pieces of the Rust Module System
+It's so ugly. I just couldn't believe it at first. All I wanted was to create a satisfying API that could take a `String` as well as string literals. I didn't want to make my users do things like add `.to_owned()` all over the place. It's madness. It's hideous.
 
-=== Crates and the crate root
+I spent a long time tracking down what to do. This is my story.
 
-A Rust project is called a `crate`. The `crate root` is the source file that the Rust compiler starts with. In node that's commonly called `index.js` and you would define it by setting the `"main"` field in your package.json. In Rust the root is typically `main.rs` for standalone executables and `lib.rs` for libraries. It's configurable in your `Cargo.toml`.
+== Should I use `&str` or `String` for my function arguments?
 
-The crate root dictates the root path where Rust will start its search for imported modules.
+The first question you need to ask is: "Do I need to own or borrow the passed value?"
 
-=== What is a module?
+For those of you still wrapping your head around owning and borrowing, think of this question as: "Do I need my own version of this value or do I just need to look at its data and move on?"
 
-It's easiest if you start with the understanding that Rust modules have _nothing_ to do with file names or paths. You'll see documentation that says otherwise and projects that make this appear to be the case, but it's a lie. Modules are purely a concept within Rust's brain.
+=== When you're borrowing the value
 
-A module is like a namespace where you bucket similar things. Modules are barriers for visibility, i.e. public, private, etc. You can have many modules in one file. Even nesting them in a single file is allowed.
+If you _don't_ need your own version, then accept a reference. The main question then becomes "Should I use `&str` or ``&String``" and the answer is almost always `&str`. Why? Well look at the function below.
 
 [source,rust]
 ----
-fn main() {
-  my_module::print(my_module::submodule::MSG);
-}
-
-mod my_module {
-  pub fn print(msg: &str) {
-    println!("{}", msg);
-  }
-
-  pub mod submodule {
-    pub const MSG: &str = "Hello world!";
-  }
-}
-----
-
-Separating logic into different files is important for humans. Not Rust. Luckily Rust has support for automatically looking up modules on the local filesystem.
-
-Let's say we want to extract `my_module` into another file. We cut and paste its code into a file called `my_module.rs` and keep an empty `mod my_module;` in our `main.rs`. The result looks like this:
-
-[source,rust]
-----
-
-fn main() {
-  my_module::print(my_module::submodule::MSG);
-}
-
-mod my_module;
-
-----
-
-[source,rust]
-----
-
-pub fn print(msg: &str) {
+fn print_str(msg: &str) {
   println!("{}", msg);
 }
-
-pub mod submodule {
-  pub const MSG: &str = "Hello world!";
-}
 ----
 
-Our `main.rs` shows we're declaring a module called `my_module`, but it's empty. Rust needs to find it.
-
-=== How Rust finds files
-
-The resolution algorithm in a nutshell is:
-
-. Start in a directory with the same path parts as the current module. For example, if you're in the crate root, the path is `./`. If you're in the module `one::two::three`, then start in `./one/two/three`.
-. Look for a file with the name of the imported module (e.g. `mod my_module` would look for `my_module.rs`)
-. Look for a file named `mod.rs` in a directory with the name of the imported module (e.g. `my_module/mod.rs`)
-. If none are found, complain. If both are found, complain. If one is found, use that one.
-
-_Note: The `mod.rs` part is technical baggage. It used to be the only way. It's not recommended anymore but you'll still see it on some projects so it's worth knowing about._
-
-What this means is that well-organized projects _seem_ like their modules mirror a file system with relative imports. This can bite you if you assume that's always true. The appearance is due to a project being well-organized. It's not a structure Rust imposes.
-
-Take a lone `main.rs` with the code below for example
+You can pass a string literal directly, a `&str` assigned to a variable, and you can pass a reference to a `&String` which works automagically.
 
 [source,rust]
 ----
-fn main() {}
-
-mod module_a;
-
-mod one {
-  mod two {
-    mod module_b;
-  }
+fn main() {
+  let string_slice = "String slice assigned to variable";
+  let real_string = "Genuine String".to_owned();
+  print_str(string_slice);
+  print_str("Literal slice");
+  print_str(&real_string);
 }
 ----
 
-Both `mod module_a` and `mod module_b` statements are in the same file. Where does Rust look for the modules on disk?
+Why? Because the trait https://github.com/Rust-lang/Rust/blob/88e5ae2dd3cf4a0bbb5af69ef70e80d5dc7b462c/library/alloc/src/str.rs#L198[`Borrow<str>` is implemented for `String`]. Anywhere you need a borrowed `str`, you can use a borrowed `String` without any hassle. The reverse is not true. If you change the function signature to accept a `&String` and try to pass a `&str`, you'll get a compile error.
 
-Rust looks for `module_a` in `./module_a.rs` or `./module_a/mod.rs`.
+=== When you need an owned value
 
-Rust looks for `module_b` in `./one/two/module_b.rs` or `./one/two/module_b/mod.rs`. `mod module_b` is declared in `one::two`, so it's namespace parts are `one::two::module_b` and that's what dictates the lookup.
+If you need an owned value then you need a `String` but there are a couple things to consider.
 
-=== Visibility
+. It is cumbersome to manually convert loads of ``&str``s to `String`. This is a genuine problem when you want to expose a satisfying, easy to use API. The example in the introduction is contrived but it is exactly what you'll deal with frequently.
+. You should let the users of your API decide how to create owned values for you. In other words, you shouldn't simply accept ``&str``s everywhere and convert them yourself. The user may have better ways of getting you the data.
 
-By default everything you define is private. BUT -- and this is a big BUT -- visibility is at the module barrier, not an item's definition. That means everything in a module can access everything else in the same module. If you take the ``pub``s off of everything in our traffic light example, it will still work. Sorry to trick you.
+Here's where you want to think about your API. Are you looking to own a string that comes from _wherever_? Or do you expect your functions to be called with a mix of string literals and/or ``String``s?
 
+If it's the former, then you're not really looking for a `&str` _or_ a `String`. You're looking for something that has a `.to_string()` method. That is, you're looking for something that implements `ToString`. Types that implement `ToString` are common, you get it for free by implementing `Display`.
 
-NOTE: Everything is private by default except for trait methods and enum variants. All trait methods and enum variants are public by default. In practical terms, that means they have the same visibility as the trait or enum they're defined on. It wouldn't make much sense to have them be anything else.
+If it's the latter, then you're looking for the common ground between a `String` and `&str`, which we found clues to in the section above.
 
+==== For functions that accept potentially generated strings
 
-Visibility also only works up and out. Modules defined closer to the root can't see anything defined deeper unless you change its visibility. You change visibility with the `pub` keyword.
+For a function that accepts arbitrary strings from anywhere -- generated or non -- you can accept arguments that implement `ToString`.
 
-`pub` makes something completely public, but only if it's reachable via the visibility chain. That is, everything leading up to the `pub` item must also be `pub`.
+[source,rust]
+----
+use std::str::FromStr; // Imported to use Ipv4Addr::from_str
 
-You can tailor the visibility with modifiers on `pub`, e.g.
+fn main() {
+  let ip_address = std::net::Ipv4Addr::from_str("127.0.0.1").unwrap();
+  let string_proper = "String proper".to_owned();
+  let string_slice = "string slice";
+  needs_string(string_slice);
+  needs_string("Literal string");
+  needs_string(string_proper);
+  needs_string(ip_address);
+}
 
-* `pub(crate)` - public within the crate, i.e. not externally visible.
-* `pub(super)` - public to the parent module only.
+fn needs_string<T: ToString>(almost_string: T) {
+  let real_string = almost_string.to_string();
+  println!("{}", real_string);
+}
+----
 
-There are other modifiers, but they're less common. You can learn about them in the [Additional reading section][].
+We talked about `impl [trait]` vs `dyn [trait]` in the last chapter but now I through in new syntax above. This is Rust's generic syntax. The function `needs_string` above could have been written like this:
 
-=== Traffic light exercise
+[source,rust]
+----
+fn needs_string(almost_string: impl ToString) {
+  let real_string = almost_string.to_string();
+  println!("{}", real_string);
+}
+----
 
-The traffic light example from the past few days has grown pretty large. It's due for some refactoring. Try to do it yourself. See what hurdles you run into before referring to the https://github.com/vinodotdev/node-to-rust/tree/master/src/crates/day-11/traffic-light[code repository] to see how I've done it.
+Nothing would need to change in the code. What's the difference? Very little. `impl [trait]` in argument position is less powerful than generic syntax. Rust also has a `where` keyword which you can use to make the same thing yet another way:
 
-==== Tips:
+[source,rust]
+----
+fn needs_string<T>(string: T)
+where
+  T: ToString,
+{
+  println!("{}", string);
+}
+----
 
-* Copy/paste is your friend. This won't need to refactor code structure or names.
-* You must declare modules from their root module file, they can't all be declared from `main.rs`
-* After moving code around, you'll need to adjust visibility to still use the items in `main()`.
-* You'll likely need to update or add `use` statements in all the files you create.
-* Visual Studio Code and rust-analyzer is your friend. Use the hover tips and "Quick code" fixes liberally.
+There's zero difference between the `where` syntax and the `<T: ToString>` syntax. Adding the separate `where` clause is for readability.
+
+==== For functions that expect a mix of string literals and ``String``s
+
+If you didn't read this section, you wouldn't lose much. Using the `ToString` method covers a lot of cases. You do however open your users up to the same concerns we described with using `.to_string()` to convert `&str` to `String` in link:./chapter-6-strings-part1.adoc[Chapter 6: Strings, Part 1]. Many structs implement `Display`. A user could pass a lot of objects to the function above without the compiler complaining. Additionally, implementations of `.to_string()` may not always be cheap. Your users don't necessarily know the internals of your code. You might be doing a lot of extra work for no good reason.
+
+Since we already learned that a `&String` can take the place of a `&str`, we can generalize our inputs to anything that can be borrowed like a `str`.
+
+You _could_ use anything that implements `Borrow<str>` and the below would work. However, you should accept anything that implements `AsRef<str>` instead. What's the difference? Borrow assumes more and can fail, `AsRef<str>` assumes little and explicitly *must not fail*. There are more differences but they don't matter for our usage here.
+
+The below is extremely similar to the above but notice that our `ip_address` is no longer a valid argument. Just because it has a printable string form doesn't mean it can be trivially taken as a `str` reference.
+
+[source,rust]
+----
+use std::str::FromStr; // Imported to use Ipv4Addr::from_str
+
+fn main() {
+  let ip_address = std::net::Ipv4Addr::from_str("127.0.0.1").unwrap();
+  let string_slice = "string slice";
+  let string_proper = "String proper".to_owned();
+  needs_string(string_slice);
+  needs_string("Literal string");
+  needs_string(string_proper);
+  // needs_string(ip_address); // Fails now
+}
+
+fn needs_string<T: AsRef<str>>(almost_string: T) {
+  let real_string = almost_string.as_ref().to_owned();
+  println!("{}", real_string);
+}
+----
 
 === Additional reading
 
-* https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html[The Rust Book: ch 7]
-* https://doc.rust-lang.org/rust-by-example/mod.html[Rust by Example: Modules]
-* https://doc.rust-lang.org/rust-by-example/crates.html[Rust by Example: Crates]
-* https://doc.rust-lang.org/reference/items/modules.html[The Rust Reference: Modules]
+* https://doc.rust-lang.org/book/ch10-00-generics.html[The Rust Book: ch 10]
+* https://doc.rust-lang.org/rust-by-example/generics.html[Rust by Example: Generics]
+* https://doc.rust-lang.org/reference/items/generics.html[The Rust Reference: Generic Parameters]
 
 == Wrap-up
 
-Repeat after me: `mod` is not `import`. Again, for those in the back: `mod` is not `import`. Once you get passed that misconception (and the mod.rs wonkiness), the module system is easy to manage. We've finally gone through enough to circle back around to the second part of our Strings guide. We'll get to that immediately in the next chapter.
+Strings used to seem so simple. We were so naive. I bet every time you dive back into node.js your eyes are going to tear up with joy. Eventually you'll have the same feeling with Rust. You'll appreciate how protective Rust is and how fast everything runs. Rust and JavaScript truly are a beautiful pair.
+
+Next up we'll dive into error handling, the `Option` enum, and the `Result` enum.
